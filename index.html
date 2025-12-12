@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Elements App</title>
+<title>Shared Elements App (Firebase)</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -43,7 +43,7 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        cursor: pointer; /* NEW: Indicate the header is clickable */
+        cursor: pointer; /* Makes entire header clickable */
     }
 
     .element-title-input {
@@ -71,8 +71,6 @@
         cursor: pointer;
         backdrop-filter: blur(4px);
         white-space: nowrap;
-        /* Ensure buttons within the header show their pointer cursor */
-        cursor: pointer; 
     }
     
     .add-btn {
@@ -165,8 +163,11 @@
         cursor: pointer;
         backdrop-filter: blur(4px);
     }
-
 </style>
+
+<script src="https://www.gstatic.com/firebasejs/9.1.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.1.0/firebase-database-compat.js"></script> 
+
 </head>
 <body>
 <div class="container" id="container"></div>
@@ -181,18 +182,41 @@
 </div>
 
 <script>
+// --- START FIREBASE CONFIGURATION ---
+
+// 1. >>> REPLACE THIS OBJECT with your actual Firebase project config <<<
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY", 
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "...",
+    appId: "..."
+};
+
+// 2. Initialize Firebase and get database reference
+const app = firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const elementsRef = database.ref('elements'); // Data is stored under the 'elements' node
+
+// --- END FIREBASE CONFIGURATION ---
+
+
 // --- Data and Utilities ---
 
-let elements = JSON.parse(localStorage.getItem("elements")) || [
-    { id: "1", title: "Example Parent", details: "Root details here", notes: "", parentId: null, expanded: true },
-    { id: "2", title: "Child Element 1", details: "First level child", notes: "", parentId: "1", expanded: true },
-    { id: "3", title: "Grandchild Element", details: "Second level child", notes: "", parentId: "2", expanded: true },
-];
-
+let elements = []; // Data will now be managed by the real-time listener
 let activeNoteId = null;
 
-function saveElements() {
-    localStorage.setItem("elements", JSON.stringify(elements));
+function saveElementsToFirebase() {
+    // Write the current state of the elements array to the Firebase Realtime Database
+    elementsRef.set(elements)
+        .then(() => {
+            // console.log("Data saved successfully!");
+        })
+        .catch((error) => {
+            console.error("Data save failed: ", error);
+        });
 }
 
 function generateUniqueId() {
@@ -218,7 +242,9 @@ function deleteRecursively(idToDelete) {
 function areAllAncestorsExpanded(id) {
     let currentEl = elements.find(e => e.id === id);
     while (currentEl && currentEl.parentId !== null) {
+        // If the current element in the loop is not expanded, return false
         if (!currentEl.expanded) return false;
+        // Move up to the next parent
         currentEl = elements.find(e => e.id === currentEl.parentId);
     }
     return true;
@@ -226,11 +252,9 @@ function areAllAncestorsExpanded(id) {
 
 // --- Rendering Logic ---
 
-// Function to build a single element card
 function createElementCard(el) {
     const level = getElementLevel(el.id);
     
-    // --- Create the main card container ---
     const card = document.createElement("div");
     card.className = `element-card element-level-${level}`;
     card.dataset.id = el.id;
@@ -238,10 +262,8 @@ function createElementCard(el) {
     card.dataset.expanded = el.expanded;
     card.style.display = 'flex'; 
 
-    // --- Element Header (Title and Add Button only) ---
     const header = document.createElement('div');
     header.className = 'element-header';
-    // NEW: Add a data-action to the header itself for clicking
     header.dataset.action = "toggle-children-header";
     header.dataset.id = el.id;
     
@@ -251,7 +273,6 @@ function createElementCard(el) {
     `;
     card.appendChild(header);
 
-    // --- Details Section (Editable Content and Buttons) ---
     const details = document.createElement('div');
     details.className = 'details';
     details.id = `details-${el.id}`;
@@ -270,7 +291,6 @@ function createElementCard(el) {
     return card;
 }
 
-// Function to control the visibility of all descendants when a parent is toggled
 function setDescendantVisibility(parentId, visible) {
     const descendants = elements.filter(el => {
         let current = el;
@@ -294,32 +314,26 @@ function setDescendantVisibility(parentId, visible) {
     });
 }
 
-
-// Main render function
 function render() {
     const container = document.getElementById("container");
     container.innerHTML = "";
     
-    // Add the global Add button for top-level elements
     const addButton = document.createElement("button");
     addButton.className = "add-btn";
     addButton.textContent = "+ Add New Top-Level Element";
     addButton.id = "addNewElement";
     container.appendChild(addButton);
     
-    // 1. Create all cards in order
     const cardMap = new Map();
     elements.forEach(el => {
         const card = createElementCard(el);
         cardMap.set(el.id, card);
     });
 
-    // 2. Insert all cards into the container, maintaining hierarchical order
     elements.forEach(el => {
         container.appendChild(cardMap.get(el.id));
     });
 
-    // 3. Set initial visibility (Hides children of collapsed parents)
     elements.forEach(el => {
         const card = cardMap.get(el.id);
         if (el.parentId && !areAllAncestorsExpanded(el.parentId)) {
@@ -328,11 +342,8 @@ function render() {
     });
 }
 
-// Initial render
-render();
-
 // --- Core Toggle Function (Re-usable for both arrow and header click) ---
-function toggleElement(id, elementToUpdate) {
+function toggleElement(id) {
     const el = elements.find(x => x.id === id);
     if (el) {
         el.expanded = !el.expanded;
@@ -349,29 +360,58 @@ function toggleElement(id, elementToUpdate) {
         }
 
         setDescendantVisibility(id, el.expanded);
-        saveElements();
+        saveElementsToFirebase(); // Save changes to Firebase
     }
 }
 
 
+// --- Firebase Real-Time Listener (Replaces initial load and renders data) ---
+function startRealtimeSync() {
+    elementsRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        
+        if (data) {
+            // Convert Firebase object (or array) to array for easier manipulation
+            if (Array.isArray(data)) {
+                elements = data;
+            } else if (typeof data === 'object' && data !== null) {
+                // If data is stored as a keyed object (typical Firebase list structure), convert it
+                elements = Object.keys(data).map(key => data[key]);
+            }
+            
+            // Re-render the application with the new data
+            render();
+            
+        } else {
+            // Database is empty - write initial example data
+            elements = [
+                { id: "1", title: "Example Parent (Shared)", details: "This data is now shared via Firebase!", notes: "", parentId: null, expanded: true },
+                { id: "2", title: "Child Element 1", details: "First level child", notes: "", parentId: "1", expanded: true },
+            ];
+            // Write the initial data to Firebase (this will trigger the 'value' listener again)
+            saveElementsToFirebase(); 
+        }
+        
+    }, (error) => {
+        console.error("Firebase read failed: " + error.code);
+    });
+}
+
 // --- Event Listeners ---
 
-// Handle all clicks
 document.addEventListener("click", e => {
     
     // Toggle Children (from the specific arrow button)
     if (e.target.dataset.action === "toggle-children") {
         const id = e.target.dataset.id;
-        // The element to update is the button itself
-        toggleElement(id, e.target);
+        toggleElement(id);
     }
     
-    // NEW: Toggle Children (from the element header click)
-    // We check if the target is the header itself OR the input/title element inside the header.
+    // Toggle Children (from the element header click)
     const header = e.target.closest('.element-header');
     if (header && header.dataset.action === "toggle-children-header" && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
         const id = header.dataset.id;
-        toggleElement(id, header);
+        toggleElement(id);
     }
 
     // Delete
@@ -380,8 +420,7 @@ document.addEventListener("click", e => {
         const elToDelete = elements.find(x => x.id === id);
         if (elToDelete && confirm(`Delete "${elToDelete.title}" and ALL its children?`)) {
             deleteRecursively(id);
-            saveElements();
-            render();
+            saveElementsToFirebase(); // Save changes to Firebase
         }
     }
 
@@ -404,8 +443,7 @@ document.addEventListener("click", e => {
             expanded: true
         };
         elements.push(newElement);
-        saveElements();
-        render();
+        saveElementsToFirebase(); // Save changes to Firebase
     }
     
     // Add Child Element 
@@ -424,9 +462,12 @@ document.addEventListener("click", e => {
                 expanded: true 
             };
             
+            // Logic to insert the new child directly after the last descendant
             const parentIndex = elements.findIndex(el => el.id === parentId);
             let lastDescendantIndex = parentIndex;
 
+            // Simple insertion logic: Find the last index that is a descendant of the parent
+            // This is a simplified approach assuming a flat array structure representing the tree order
             for (let i = parentIndex + 1; i < elements.length; i++) {
                 let current = elements[i];
                 let checkParent = current;
@@ -453,8 +494,7 @@ document.addEventListener("click", e => {
                 parentElement.expanded = true;
             }
 
-            saveElements();
-            render(); 
+            saveElementsToFirebase(); // Save changes to Firebase
         }
     }
 });
@@ -466,16 +506,14 @@ document.addEventListener("input", e => {
         const id = e.target.dataset.titleId;
         const el = elements.find(x => x.id === id);
         el.title = e.target.value;
-        saveElements();
-        // Prevent header click from triggering toggle when typing in the input
-        e.stopPropagation(); 
+        saveElementsToFirebase(); // Save changes to Firebase
     }
     // Details change
     if (e.target.dataset.detailsId) {
         const id = e.target.dataset.detailsId;
         const el = elements.find(x => x.id === id);
         el.details = e.target.value;
-        saveElements();
+        saveElementsToFirebase(); // Save changes to Firebase
     }
 });
 
@@ -495,9 +533,12 @@ document.getElementById("closeNotes").onclick = () => {
 document.getElementById("saveNotes").onclick = () => {
     const el = elements.find(x => x.id === activeNoteId);
     el.notes = document.getElementById("notesInput").value;
-    saveElements();
+    saveElementsToFirebase(); // Save changes to Firebase
     document.getElementById("notesModal").style.display = "none";
 };
+
+// Start the real-time synchronization once the script loads
+startRealtimeSync();
 </script>
 </body>
 </html>
