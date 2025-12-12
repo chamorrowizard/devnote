@@ -389,40 +389,40 @@ function getQueryParameter(name) {
 }
 
 function startRealtimeSync() {
-    // 1. Check URL for project ID
     let projectId = getQueryParameter('projectId');
 
     if (!projectId) {
-        // 2. If no ID found, generate a new one
         projectId = generateUniqueId();
-        // Redirect to the new URL with the project ID
         window.location.search = `?projectId=${projectId}`;
-        return; // The redirect will trigger a new load with the ID
+        return; 
     }
 
-    // 3. Set the current project ID and the Firebase reference dynamically
     currentProjectId = projectId;
     elementsRef = database.ref(`projects/${projectId}/elements`);
 
-    // 4. Start the Firebase listener on the specific project path
     elementsRef.on('value', (snapshot) => {
         const data = snapshot.val();
         
         if (data) {
+            // Data exists, load it
             if (Array.isArray(data)) {
                 elements = data;
             } else if (typeof data === 'object' && data !== null) {
                 elements = Object.keys(data).map(key => data[key]);
             }
-            
             render();
             
         } else {
-            // If the project path is empty, initialize it with example data
-            elements = [
-                { id: "1", title: `Project ${projectId}`, details: "Start collaborating here!", notes: "", parentId: null, expanded: true },
-            ];
-            saveElementsToFirebase(); 
+            // Data is empty, so initialize the array
+            // Check if our local array is ALSO empty before initializing
+            if (elements.length === 0) { 
+                elements = [
+                    { id: "1", title: `Project ${projectId}`, details: "Start collaborating here!", notes: "", parentId: null, expanded: true },
+                ];
+                // *** NEW LINE: SAVE IT TO FIREBASE ONLY ONCE IF IT'S BRAND NEW ***
+                saveElementsToFirebase(); 
+            }
+            render(); 
         }
         
     }, (error) => {
