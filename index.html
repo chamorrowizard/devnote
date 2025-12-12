@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Elements App</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(135deg, #c3d5ff, #ffe3f5);
+        padding: 20px;
+    }
+
+    .container {
+        max-width: 600px;
+        margin: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .element-card {
+        background: rgba(255,255,255,0.35);
+        backdrop-filter: blur(12px);
+        padding: 14px;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    /* Indentation for different levels (up to 5) */
+    .element-level-1 { margin-left: 0px; }
+    .element-level-2 { margin-left: 10px; }
+    .element-level-3 { margin-left: 20px; }
+    .element-level-4 { margin-left: 30px; }
+    .element-level-5 { margin-left: 40px; }
+
+    .element-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer; /* NEW: Indicate the header is clickable */
+    }
+
+    .element-title-input {
+        font-size: 1.1rem;
+        font-weight: bold;
+        border: none;
+        background: none;
+        padding: 0;
+        margin: 0;
+        /* Mobile Fixes */
+        min-width: 0;
+        overflow: hidden; 
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex-grow: 1;
+        cursor: text; /* Allow text cursor when editing title */
+    }
+
+    .arrow-btn, .add-btn {
+        font-size: 1rem;
+        padding: 4px 10px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.45);
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+        white-space: nowrap;
+        /* Ensure buttons within the header show their pointer cursor */
+        cursor: pointer; 
+    }
+    
+    .add-btn {
+        background: rgba(0,123,255,0.4);
+        color: white;
+        font-weight: bold;
+    }
+
+    .delete-btn {
+        background: rgba(255,0,0,0.4);
+        backdrop-filter: blur(6px);
+        border: none;
+        color: white;
+        font-weight: bold;
+        padding: 6px 10px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: 0.2s ease;
+    }
+    .delete-btn:hover { background: rgba(255,0,0,0.7); }
+
+    .details {
+        padding-top: 6px;
+        padding-left: 8px;
+        font-size: 0.9rem;
+    }
+
+    /* Hide details when element is collapsed via data-attribute */
+    .element-card[data-expanded="false"] .details {
+        display: none;
+    }
+
+    .details textarea {
+        width: 100%;
+        min-height: 80px;
+        border-radius: 8px;
+        border: 1px solid rgba(0,0,0,0.1);
+        padding: 8px;
+        font-size: 0.9rem;
+        resize: vertical;
+        background: rgba(255,255,255,0.5);
+    }
+    
+    .details-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+        justify-content: flex-end;
+    }
+
+    .notes-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        max-width: 420px;
+        background: rgba(255,255,255,0.5);
+        backdrop-filter: blur(14px);
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+        display: none;
+        flex-direction: column;
+        gap: 14px;
+        z-index: 999;
+    }
+
+    .notes-modal textarea {
+        width: 100%;
+        min-height: 150px;
+        border-radius: 10px;
+        border: none;
+        padding: 12px;
+        font-size: 1rem;
+        resize: vertical;
+    }
+
+    .modal-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .modal-btn {
+        padding: 8px 14px;
+        background: rgba(255,255,255,0.4);
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+    }
+
+</style>
+</head>
+<body>
+<div class="container" id="container"></div>
+
+<div class="notes-modal" id="notesModal">
+    <h3>Notes</h3>
+    <textarea id="notesInput"></textarea>
+    <div class="modal-buttons">
+        <button class="modal-btn" id="closeNotes">Close</button>
+        <button class="modal-btn" id="saveNotes">Save</button>
+    </div>
+</div>
+
+<script>
+// --- Data and Utilities ---
+
+let elements = JSON.parse(localStorage.getItem("elements")) || [
+    { id: "1", title: "Example Parent", details: "Root details here", notes: "", parentId: null, expanded: true },
+    { id: "2", title: "Child Element 1", details: "First level child", notes: "", parentId: "1", expanded: true },
+    { id: "3", title: "Grandchild Element", details: "Second level child", notes: "", parentId: "2", expanded: true },
+];
+
+let activeNoteId = null;
+
+function saveElements() {
+    localStorage.setItem("elements", JSON.stringify(elements));
+}
+
+function generateUniqueId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+function getChildren(parentId) {
+    return elements.filter(el => el.parentId === parentId);
+}
+
+function getElementLevel(id, level = 1) {
+    const el = elements.find(e => e.id === id);
+    if (!el || !el.parentId) return level;
+    return getElementLevel(el.parentId, level + 1);
+}
+
+function deleteRecursively(idToDelete) {
+    const children = getChildren(idToDelete);
+    children.forEach(child => deleteRecursively(child.id));
+    elements = elements.filter(el => el.id !== idToDelete);
+}
+
+function areAllAncestorsExpanded(id) {
+    let currentEl = elements.find(e => e.id === id);
+    while (currentEl && currentEl.parentId !== null) {
+        if (!currentEl.expanded) return false;
+        currentEl = elements.find(e => e.id === currentEl.parentId);
+    }
+    return true;
+}
+
+// --- Rendering Logic ---
+
+// Function to build a single element card
+function createElementCard(el) {
+    const level = getElementLevel(el.id);
+    
+    // --- Create the main card container ---
+    const card = document.createElement("div");
+    card.className = `element-card element-level-${level}`;
+    card.dataset.id = el.id;
+    card.dataset.parentid = el.parentId || "null";
+    card.dataset.expanded = el.expanded;
+    card.style.display = 'flex'; 
+
+    // --- Element Header (Title and Add Button only) ---
+    const header = document.createElement('div');
+    header.className = 'element-header';
+    // NEW: Add a data-action to the header itself for clicking
+    header.dataset.action = "toggle-children-header";
+    header.dataset.id = el.id;
+    
+    header.innerHTML = `
+        <button class="add-btn" data-add-child="${el.id}" ${level >= 5 ? 'disabled' : ''}>+ Child</button>
+        <input class="element-title-input" value="${el.title}" data-title-id="${el.id}" placeholder="Element Title">
+    `;
+    card.appendChild(header);
+
+    // --- Details Section (Editable Content and Buttons) ---
+    const details = document.createElement('div');
+    details.className = 'details';
+    details.id = `details-${el.id}`;
+    
+    details.innerHTML = `
+        <textarea data-details-id="${el.id}" placeholder="Enter details here">${el.details}</textarea>
+        
+        <div class="details-buttons">
+            <button class="arrow-btn" data-notes="${el.id}">Notes</button>
+            <button class="arrow-btn" data-id="${el.id}" data-action="toggle-children">${el.expanded ? '▲' : '▼'}</button>
+            <button class="delete-btn" data-delete="${el.id}">✕</button>
+        </div>
+    `;
+    card.appendChild(details);
+
+    return card;
+}
+
+// Function to control the visibility of all descendants when a parent is toggled
+function setDescendantVisibility(parentId, visible) {
+    const descendants = elements.filter(el => {
+        let current = el;
+        while (current) {
+            if (current.parentId === parentId) return true;
+            current = elements.find(e => e.id === current.parentId);
+        }
+        return false;
+    });
+
+    descendants.forEach(el => {
+        const card = document.querySelector(`.element-card[data-id="${el.id}"]`);
+        if (card) {
+            if (areAllAncestorsExpanded(el.parentId)) {
+                card.style.display = 'flex';
+                card.dataset.expanded = el.expanded; 
+            } else {
+                card.style.display = 'none';
+            }
+        }
+    });
+}
+
+
+// Main render function
+function render() {
+    const container = document.getElementById("container");
+    container.innerHTML = "";
+    
+    // Add the global Add button for top-level elements
+    const addButton = document.createElement("button");
+    addButton.className = "add-btn";
+    addButton.textContent = "+ Add New Top-Level Element";
+    addButton.id = "addNewElement";
+    container.appendChild(addButton);
+    
+    // 1. Create all cards in order
+    const cardMap = new Map();
+    elements.forEach(el => {
+        const card = createElementCard(el);
+        cardMap.set(el.id, card);
+    });
+
+    // 2. Insert all cards into the container, maintaining hierarchical order
+    elements.forEach(el => {
+        container.appendChild(cardMap.get(el.id));
+    });
+
+    // 3. Set initial visibility (Hides children of collapsed parents)
+    elements.forEach(el => {
+        const card = cardMap.get(el.id);
+        if (el.parentId && !areAllAncestorsExpanded(el.parentId)) {
+            card.style.display = 'none';
+        }
+    });
+}
+
+// Initial render
+render();
+
+// --- Core Toggle Function (Re-usable for both arrow and header click) ---
+function toggleElement(id, elementToUpdate) {
+    const el = elements.find(x => x.id === id);
+    if (el) {
+        el.expanded = !el.expanded;
+
+        // Find the arrow button and update its text
+        const arrowButton = document.querySelector(`.details-buttons button[data-id="${id}"][data-action="toggle-children"]`);
+        if (arrowButton) {
+            arrowButton.textContent = el.expanded ? '▲' : '▼';
+        }
+
+        const card = document.querySelector(`.element-card[data-id="${id}"]`);
+        if (card) {
+            card.dataset.expanded = el.expanded;
+        }
+
+        setDescendantVisibility(id, el.expanded);
+        saveElements();
+    }
+}
+
+
+// --- Event Listeners ---
+
+// Handle all clicks
+document.addEventListener("click", e => {
+    
+    // Toggle Children (from the specific arrow button)
+    if (e.target.dataset.action === "toggle-children") {
+        const id = e.target.dataset.id;
+        // The element to update is the button itself
+        toggleElement(id, e.target);
+    }
+    
+    // NEW: Toggle Children (from the element header click)
+    // We check if the target is the header itself OR the input/title element inside the header.
+    const header = e.target.closest('.element-header');
+    if (header && header.dataset.action === "toggle-children-header" && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+        const id = header.dataset.id;
+        toggleElement(id, header);
+    }
+
+    // Delete
+    if (e.target.dataset.delete) {
+        const id = e.target.dataset.delete;
+        const elToDelete = elements.find(x => x.id === id);
+        if (elToDelete && confirm(`Delete "${elToDelete.title}" and ALL its children?`)) {
+            deleteRecursively(id);
+            saveElements();
+            render();
+        }
+    }
+
+    // Notes
+    if (e.target.dataset.notes) {
+        activeNoteId = e.target.dataset.notes;
+        const el = elements.find(x => x.id === activeNoteId);
+        document.getElementById("notesInput").value = el.notes || "";
+        document.getElementById("notesModal").style.display = "flex";
+    }
+    
+    // Add New Element (Global button)
+    if (e.target.id === "addNewElement") {
+        const newElement = {
+            id: generateUniqueId(),
+            title: "New Top-Level Element",
+            details: "Editable content here.",
+            notes: "",
+            parentId: null,
+            expanded: true
+        };
+        elements.push(newElement);
+        saveElements();
+        render();
+    }
+    
+    // Add Child Element 
+    if (e.target.dataset.addChild) {
+        const parentId = e.target.dataset.addChild;
+        const parentElement = elements.find(el => el.id === parentId);
+        const level = getElementLevel(parentId);
+
+        if (level < 5 && parentElement) {
+            const newElement = {
+                id: generateUniqueId(),
+                title: `Child of ${parentElement.title}`,
+                details: "Editable child content.",
+                notes: "",
+                parentId: parentId,
+                expanded: true 
+            };
+            
+            const parentIndex = elements.findIndex(el => el.id === parentId);
+            let lastDescendantIndex = parentIndex;
+
+            for (let i = parentIndex + 1; i < elements.length; i++) {
+                let current = elements[i];
+                let checkParent = current;
+                let isDescendant = false;
+                
+                while (checkParent) {
+                    if (checkParent.parentId === parentId) {
+                        isDescendant = true;
+                        break;
+                    }
+                    checkParent = elements.find(e => e.id === checkParent.parentId);
+                }
+
+                if (isDescendant) {
+                    lastDescendantIndex = i;
+                } else if (current.parentId === null || getElementLevel(current.id) <= level) {
+                    break;
+                }
+            }
+
+            elements.splice(lastDescendantIndex + 1, 0, newElement);
+            
+            if (!parentElement.expanded) {
+                parentElement.expanded = true;
+            }
+
+            saveElements();
+            render(); 
+        }
+    }
+});
+
+// Handle input changes for title and details
+document.addEventListener("input", e => {
+    // Title change
+    if (e.target.dataset.titleId) {
+        const id = e.target.dataset.titleId;
+        const el = elements.find(x => x.id === id);
+        el.title = e.target.value;
+        saveElements();
+        // Prevent header click from triggering toggle when typing in the input
+        e.stopPropagation(); 
+    }
+    // Details change
+    if (e.target.dataset.detailsId) {
+        const id = e.target.dataset.detailsId;
+        const el = elements.find(x => x.id === id);
+        el.details = e.target.value;
+        saveElements();
+    }
+});
+
+// Prevent header click from triggering if the input field is clicked
+document.addEventListener("mousedown", e => {
+    if (e.target.tagName === 'INPUT' && e.target.dataset.titleId) {
+        e.stopPropagation(); 
+    }
+});
+
+
+// Modal buttons
+document.getElementById("closeNotes").onclick = () => {
+    document.getElementById("notesModal").style.display = "none";
+};
+
+document.getElementById("saveNotes").onclick = () => {
+    const el = elements.find(x => x.id === activeNoteId);
+    el.notes = document.getElementById("notesInput").value;
+    saveElements();
+    document.getElementById("notesModal").style.display = "none";
+};
+</script>
+</body>
+</html>
