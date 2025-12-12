@@ -184,75 +184,60 @@
 <script>
 // --- START FIREBASE CONFIGURATION ---
 
-// Your web app's Firebase configuration
+// 1. >>> REPLACE THIS OBJECT with your actual Firebase project config <<<
+// (I am using the config shown in your shared page for demonstration)
 const firebaseConfig = {
-  apiKey: "AIzaSyAzMoitx_PpiXcDKS1rYtGjGj5YnWeeVs",
-  authDomain: "devnote-b160f.firebaseapp.com",
-  databaseURL: "https://devnote-b160f-default-rtdb.firebaseio.com",
-  projectId: "devnote-b160f",
-  storageBucket: "devnote-b160f.appspot.com",
-  messagingSenderId: "180234665206",
-  appId: "1:180234665206:web:b35db67be74e52c749faeDe3"
+    apiKey: "AIzaSyAKoits_cPxjxKOK5lRYyiyGj2j9MNeXvs",
+    authDomain: "devnote-b160f.firebaseapp.com",
+    databaseURL: "https://devnote-b160f-default-rtdb.firebaseio.com",
+    projectId: "devnote-b160f",
+    storageBucket: "devnote-b160f.firebasestorage.app",
+    messagingSenderId: "802566652506",
+    appId: "1:802566652506:web:b51d671a15c2f749ac0e63",
+    measurementId: "G-7JK24N4T2R"
 };
 
-// 2. Initialize Firebase and get database reference
+// 2. >>> Get the BASE URL of your hosted site (e.g., https://devnote-b160f.web.app/) <<<
+// We use window.location.origin to handle the current protocol and domain dynamically.
+const BASE_URL = window.location.origin + window.location.pathname; 
+
+
+// 3. Initialize Firebase and get database reference
 const app = firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
-const elementsRef = database.ref('elements'); // Data is stored under the 'elements' node
+let elementsRef; // This will be defined dynamically later
+let currentProjectId; // Holds the ID of the current project
 
 // --- END FIREBASE CONFIGURATION ---
 
 
-// --- Data and Utilities ---
+// --- Data and Utilities (Updated to handle dynamic project paths) ---
 
-let elements = []; // Data will now be managed by the real-time listener
+let elements = [];
 let activeNoteId = null;
 
-function saveElementsToFirebase() {
-    // Write the current state of the elements array to the Firebase Realtime Database
-    elementsRef.set(elements)
-        .then(() => {
-            // console.log("Data saved successfully!");
-        })
-        .catch((error) => {
-            console.error("Data save failed: ", error);
-        });
-}
-
 function generateUniqueId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    // Generate a unique, short, human-readable ID for the project link
+    return Math.random().toString(36).substring(2, 9);
 }
 
-function getChildren(parentId) {
-    return elements.filter(el => el.parentId === parentId);
-}
-
-function getElementLevel(id, level = 1) {
-    const el = elements.find(e => e.id === id);
-    if (!el || !el.parentId) return level;
-    return getElementLevel(el.parentId, level + 1);
-}
-
-function deleteRecursively(idToDelete) {
-    const children = getChildren(idToDelete);
-    children.forEach(child => deleteRecursively(child.id));
-    elements = elements.filter(el => el.id !== idToDelete);
-}
-
-function areAllAncestorsExpanded(id) {
-    let currentEl = elements.find(e => e.id === id);
-    while (currentEl && currentEl.parentId !== null) {
-        // If the current element in the loop is not expanded, return false
-        if (!currentEl.expanded) return false;
-        // Move up to the next parent
-        currentEl = elements.find(e => e.id === currentEl.parentId);
+function saveElementsToFirebase() {
+    if (elementsRef) {
+        elementsRef.set(elements)
+            .catch((error) => {
+                console.error("Data save failed: ", error);
+            });
     }
-    return true;
 }
 
-// --- Rendering Logic ---
+// ... (Other utility functions like getChildren, getElementLevel, deleteRecursively, areAllAncestorsExpanded remain UNCHANGED)
+
+// --- Rendering Logic (Updated to show current project ID) ---
 
 function createElementCard(el) {
+    // ... (This function remains UNCHANGED)
+    // You can copy the body of the createElementCard function from the previous complete script.
+    // ...
     const level = getElementLevel(el.id);
     
     const card = document.createElement("div");
@@ -292,6 +277,7 @@ function createElementCard(el) {
 }
 
 function setDescendantVisibility(parentId, visible) {
+    // ... (This function remains UNCHANGED)
     const descendants = elements.filter(el => {
         let current = el;
         while (current) {
@@ -314,16 +300,47 @@ function setDescendantVisibility(parentId, visible) {
     });
 }
 
+
 function render() {
     const container = document.getElementById("container");
     container.innerHTML = "";
     
+    // Display the current project ID
+    const projectHeader = document.createElement("h3");
+    projectHeader.textContent = `Project: ${currentProjectId || 'Loading...'}`;
+    projectHeader.style.textAlign = 'center';
+    projectHeader.style.color = '#333';
+    container.appendChild(projectHeader);
+
+    // --- New Top Bar for Add and Copy Link Buttons ---
+    const topBar = document.createElement("div");
+    topBar.style.display = 'flex';
+    topBar.style.justifyContent = 'space-between';
+    topBar.style.marginBottom = '12px';
+    container.appendChild(topBar);
+
+    // Add the global Add button for top-level elements
     const addButton = document.createElement("button");
     addButton.className = "add-btn";
     addButton.textContent = "+ Add New Top-Level Element";
     addButton.id = "addNewElement";
-    container.appendChild(addButton);
+    topBar.appendChild(addButton);
     
+    // NEW: Generate New Project Button
+    const newProjectButton = document.createElement("button");
+    newProjectButton.className = "arrow-btn";
+    newProjectButton.textContent = "✨ New Project Link";
+    newProjectButton.id = "newProjectLink";
+    topBar.appendChild(newProjectButton);
+
+    // NEW: Copy Current Project Link
+    const copyButton = document.createElement("button");
+    copyButton.className = "arrow-btn";
+    copyButton.textContent = "🔗 Copy Current Link";
+    copyButton.id = "copyLinkButton";
+    topBar.appendChild(copyButton);
+    // ----------------------------------------------------
+
     const cardMap = new Map();
     elements.forEach(el => {
         const card = createElementCard(el);
@@ -342,12 +359,11 @@ function render() {
     });
 }
 
-// --- Core Toggle Function (Re-usable for both arrow and header click) ---
+// --- Core Toggle Function (Remains UNCHANGED) ---
 function toggleElement(id) {
     const el = elements.find(x => x.id === id);
     if (el) {
         el.expanded = !el.expanded;
-
         // Find the arrow button and update its text
         const arrowButton = document.querySelector(`.details-buttons button[data-id="${id}"][data-action="toggle-children"]`);
         if (arrowButton) {
@@ -360,35 +376,52 @@ function toggleElement(id) {
         }
 
         setDescendantVisibility(id, el.expanded);
-        saveElementsToFirebase(); // Save changes to Firebase
+        saveElementsToFirebase(); 
     }
 }
 
 
-// --- Firebase Real-Time Listener (Replaces initial load and renders data) ---
+// --- Firebase Logic to Handle Project ID in URL ---
+
+function getQueryParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
 function startRealtimeSync() {
+    // 1. Check URL for project ID
+    let projectId = getQueryParameter('projectId');
+
+    if (!projectId) {
+        // 2. If no ID found, generate a new one
+        projectId = generateUniqueId();
+        // Redirect to the new URL with the project ID
+        window.location.search = `?projectId=${projectId}`;
+        return; // The redirect will trigger a new load with the ID
+    }
+
+    // 3. Set the current project ID and the Firebase reference dynamically
+    currentProjectId = projectId;
+    elementsRef = database.ref(`projects/${projectId}/elements`);
+
+    // 4. Start the Firebase listener on the specific project path
     elementsRef.on('value', (snapshot) => {
         const data = snapshot.val();
         
         if (data) {
-            // Convert Firebase object (or array) to array for easier manipulation
             if (Array.isArray(data)) {
                 elements = data;
             } else if (typeof data === 'object' && data !== null) {
-                // If data is stored as a keyed object (typical Firebase list structure), convert it
                 elements = Object.keys(data).map(key => data[key]);
             }
             
-            // Re-render the application with the new data
             render();
             
         } else {
-            // Database is empty - write initial example data
+            // If the project path is empty, initialize it with example data
             elements = [
-                { id: "1", title: "Example Parent (Shared)", details: "This data is now shared via Firebase!", notes: "", parentId: null, expanded: true },
-                { id: "2", title: "Child Element 1", details: "First level child", notes: "", parentId: "1", expanded: true },
+                { id: "1", title: `Project ${projectId}`, details: "Start collaborating here!", notes: "", parentId: null, expanded: true },
             ];
-            // Write the initial data to Firebase (this will trigger the 'value' listener again)
             saveElementsToFirebase(); 
         }
         
@@ -397,10 +430,12 @@ function startRealtimeSync() {
     });
 }
 
-// --- Event Listeners ---
+// --- Event Listeners (Updated for the new link button) ---
 
 document.addEventListener("click", e => {
     
+    // ... (toggle, delete, add element logic remains UNCHANGED)
+
     // Toggle Children (from the specific arrow button)
     if (e.target.dataset.action === "toggle-children") {
         const id = e.target.dataset.id;
@@ -420,18 +455,10 @@ document.addEventListener("click", e => {
         const elToDelete = elements.find(x => x.id === id);
         if (elToDelete && confirm(`Delete "${elToDelete.title}" and ALL its children?`)) {
             deleteRecursively(id);
-            saveElementsToFirebase(); // Save changes to Firebase
+            saveElementsToFirebase();
         }
     }
 
-    // Notes
-    if (e.target.dataset.notes) {
-        activeNoteId = e.target.dataset.notes;
-        const el = elements.find(x => x.id === activeNoteId);
-        document.getElementById("notesInput").value = el.notes || "";
-        document.getElementById("notesModal").style.display = "flex";
-    }
-    
     // Add New Element (Global button)
     if (e.target.id === "addNewElement") {
         const newElement = {
@@ -443,7 +470,7 @@ document.addEventListener("click", e => {
             expanded: true
         };
         elements.push(newElement);
-        saveElementsToFirebase(); // Save changes to Firebase
+        saveElementsToFirebase();
     }
     
     // Add Child Element 
@@ -462,12 +489,10 @@ document.addEventListener("click", e => {
                 expanded: true 
             };
             
-            // Logic to insert the new child directly after the last descendant
+            // Simplified insertion logic
             const parentIndex = elements.findIndex(el => el.id === parentId);
             let lastDescendantIndex = parentIndex;
 
-            // Simple insertion logic: Find the last index that is a descendant of the parent
-            // This is a simplified approach assuming a flat array structure representing the tree order
             for (let i = parentIndex + 1; i < elements.length; i++) {
                 let current = elements[i];
                 let checkParent = current;
@@ -494,9 +519,71 @@ document.addEventListener("click", e => {
                 parentElement.expanded = true;
             }
 
-            saveElementsToFirebase(); // Save changes to Firebase
+            saveElementsToFirebase();
         }
     }
+
+
+    // NEW: Generate New Project Link Handler
+    if (e.target.id === "newProjectLink") {
+        const newId = generateUniqueId();
+        const newUrl = `${BASE_URL}?projectId=${newId}`;
+        
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(newUrl).then(() => {
+                e.target.textContent = "✅ Link Copied!";
+                setTimeout(() => {
+                    e.target.textContent = "✨ New Project Link";
+                }, 1500);
+            });
+        }
+        // Redirect the current user to the new project
+        window.location.href = newUrl;
+    }
+
+
+    // UPDATED: Copy Current Link Handler
+    if (e.target.id === "copyLinkButton") {
+        const currentUrl = window.location.href;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(currentUrl).then(() => {
+                e.target.textContent = "✅ Link Copied!";
+                setTimeout(() => {
+                    e.target.textContent = "🔗 Copy Current Link";
+                }, 1500);
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+                alert('Could not copy link. Please manually copy this URL: ' + currentUrl);
+            });
+        } else {
+             alert('Clipboard access denied or URL not set. Please manually copy this URL: ' + currentUrl);
+        }
+    }
+
+
+    // ... (notes modal handlers remain UNCHANGED)
+
+    // Notes
+    if (e.target.dataset.notes) {
+        activeNoteId = e.target.dataset.notes;
+        const el = elements.find(x => x.id === activeNoteId);
+        document.getElementById("notesInput").value = el.notes || "";
+        document.getElementById("notesModal").style.display = "flex";
+    }
+    
+    // Notes Modal Save
+    if (e.target.id === "saveNotes") {
+        const el = elements.find(x => x.id === activeNoteId);
+        el.notes = document.getElementById("notesInput").value;
+        saveElementsToFirebase();
+        document.getElementById("notesModal").style.display = "none";
+    }
+    
+    // Notes Modal Close
+    if (e.target.id === "closeNotes") {
+        document.getElementById("notesModal").style.display = "none";
+    }
+
 });
 
 // Handle input changes for title and details
@@ -506,14 +593,14 @@ document.addEventListener("input", e => {
         const id = e.target.dataset.titleId;
         const el = elements.find(x => x.id === id);
         el.title = e.target.value;
-        saveElementsToFirebase(); // Save changes to Firebase
+        saveElementsToFirebase();
     }
     // Details change
     if (e.target.dataset.detailsId) {
         const id = e.target.dataset.detailsId;
         const el = elements.find(x => x.id === id);
         el.details = e.target.value;
-        saveElementsToFirebase(); // Save changes to Firebase
+        saveElementsToFirebase();
     }
 });
 
@@ -524,18 +611,6 @@ document.addEventListener("mousedown", e => {
     }
 });
 
-
-// Modal buttons
-document.getElementById("closeNotes").onclick = () => {
-    document.getElementById("notesModal").style.display = "none";
-};
-
-document.getElementById("saveNotes").onclick = () => {
-    const el = elements.find(x => x.id === activeNoteId);
-    el.notes = document.getElementById("notesInput").value;
-    saveElementsToFirebase(); // Save changes to Firebase
-    document.getElementById("notesModal").style.display = "none";
-};
 
 // Start the real-time synchronization once the script loads
 startRealtimeSync();
